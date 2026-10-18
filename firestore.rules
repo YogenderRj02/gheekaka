@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users: private. Har user sirf apna profile; role sirf admin badal sakta hai.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'resident';
+      allow update: if signedIn() && ((request.auth.uid == uid
+        && request.resource.data.role == resource.data.role) || isAdmin());
+    }
+
+    // Complaints: PUBLIC READ (bina login ke feed dikhe), likhne ke liye login
+    match /complaints/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'Submitted';
+      allow update: if signedIn() && (
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvoters']) ||
+        (resource.data.uid == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description','photos','location']))
+      );
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status == 'Submitted');
+
+      match /comments/{cid} {
+        allow read: if true;
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Admin-managed content: public read
+    match /notices/{id}   { allow read: if true; allow write: if isAdmin(); }
+    match /directory/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /mandi/{id}     { allow read: if true; allow write: if isAdmin(); }
+
+    // Polls: public read, vote ke liye login (ek user = ek vote)
+    match /polls/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+      match /votes/{uid} {
+        allow read: if true;
+        allow create: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // Gaav Bazaar: listing public, seller ka phone number sirf logged-in users ko
+    match /bazaar/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+
+      match /private/{doc} {
+        allow read: if signedIn();
+        allow create, update: if signedIn() && get(/databases/$(database)/documents/bazaar/$(id)).data.uid == request.auth.uid;
+        allow delete: if signedIn() && (get(/databases/$(database)/documents/bazaar/$(id)).data.uid == request.auth.uid || isAdmin());
+      }
+    }
+  }
+}
