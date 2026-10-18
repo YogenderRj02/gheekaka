@@ -1,6 +1,6 @@
 import { firebaseConfig, DRIVE_UPLOAD_URL, VILLAGE } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, getDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit, serverTimestamp, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 /* ================= helpers ================= */
@@ -125,13 +125,17 @@ function authSheet() {
   const head = t => `<div class="row between" style="margin-bottom:6px"><h3 style="font-size:24px">${t}</h3><button class="iconbtn" onclick="A.closeModal()" aria-label="Close">✕</button></div>`;
   if (S.demo) return head(B('Firebase जोड़ना बाकी है', 'Firebase not connected')) + `<p>${B('अभी यह डेमो है। असली लॉगिन के लिए <b>firebase-config.js</b> में अपनी Firebase keys डालें (SETUP.md देखें)।', 'This is a demo. Add your Firebase keys in <b>firebase-config.js</b> for real login (see SETUP.md).')}</p><button class="btn btn-brand btn-block" onclick="A.closeModal()">OK</button>`;
   const why = S.why ? `<p style="margin:0 0 14px;font-weight:600">${esc(S.why)}</p>` : `<p class="muted" style="margin:0 0 14px">${B('सिर्फ़ एक OTP से खाता बन जाता है।', 'One OTP is all it takes.')}</p>`;
-  if (S.authStep === 'phone') return head(B('मोबाइल नंबर से जुड़ें', 'Continue with mobile')) + why + `<div class="field"><label>${B('मोबाइल नंबर', 'Mobile number')}</label><div class="row" style="flex-wrap:nowrap"><b>+91</b><input class="input" id="phoneIn" inputmode="numeric" maxlength="10" placeholder="10 digit number" autocomplete="tel-national"></div></div>
+  if (S.authStep === 'phone') return head(B('लॉगिन / खाता खोलें', 'Log in / Sign up')) + why + `<button class="btn btn-line btn-block" id="gBtn" onclick="A.google()" style="gap:10px"><svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.5 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.2 5.6c4.3-4 6.8-9.9 6.8-17z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.100 0 24s.9 7.600 2.600 10.800l7.900-6.100z"/><path fill="#34A853" d="M24 48c6.500 0 11.900-2.100 15.900-5.800l-7.200-5.600c-2 1.400-4.600 2.200-8.700 2.200-6.300 0-11.600-4-13.500-9.800l-7.900 6.100C6.500 42.600 14.600 48 24 48z"/></svg>${B('Google से जारी रखें (मुफ़्त)', 'Continue with Google (free)')}</button><div class="muted" style="text-align:center;margin:12px 0">${B('या मोबाइल OTP से', 'or with mobile OTP')}</div><div class="field"><label>${B('मोबाइल नंबर', 'Mobile number')}</label><div class="row" style="flex-wrap:nowrap"><b>+91</b><input class="input" id="phoneIn" inputmode="numeric" maxlength="10" placeholder="10 digit number" autocomplete="tel-national"></div></div>
   <button class="btn btn-brand btn-block" style="margin-top:14px" id="sendBtn" onclick="A.sendOtp()">${B('OTP भेजें', 'Send OTP')}</button>
-  <p class="muted" style="margin:12px 0 0">${B('पहली बार? OTP के बाद खाता अपने-आप बन जाएगा। आपका नंबर शिकायतों में नहीं दिखता।', 'First time? Your account is created after OTP. Your number is never shown on complaints.')}</p>`;
+  <p class="muted" style="margin:12px 0 0">${B('पहली बार? लॉगिन के बाद खाता अपने-आप बन जाएगा। आपका नंबर शिकायतों में नहीं दिखता।', 'First time? Your account is created after login. Your number is never shown on complaints.')}</p>`;
   if (S.authStep === 'otp') return head(B('OTP डालें', 'Enter OTP')) + `<p class="muted" style="margin:0 0 12px">${B('SMS में आया 6 अंकों का कोड', 'The 6-digit code from your SMS')}</p><input class="input otp" id="otpIn" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
   <button class="btn btn-brand btn-block" style="margin-top:14px" id="verBtn" onclick="A.verifyOtp()">${B('पक्का करें', 'Verify')}</button><button class="btn btn-line btn-block" style="margin-top:8px" onclick="A.resetAuth()">${B('नंबर बदलें', 'Change number')}</button>`;
-  return head(B('अपना परिचय दें', 'Tell us who you are')) + `<div class="form-grid" style="grid-template-columns:1fr"><div class="field"><label>${B('पूरा नाम *', 'Full name *')}</label><input class="input" id="obName" placeholder="${B('जैसे: रामलाल शर्मा', 'e.g. Ramlal Sharma')}"></div><div class="field"><label>${B('वार्ड', 'Ward')}</label><select id="obWard">${wardOpts()}</select></div></div>
+  return head(B('अपना परिचय दें', 'Tell us who you are')) + `<div class="form-grid" style="grid-template-columns:1fr"><div class="field"><label>${B('पूरा नाम *', 'Full name *')}</label><input class="input" id="obName" value="${esc(S.user?.displayName || '')}" placeholder="${B('जैसे: रामलाल शर्मा', 'e.g. Ramlal Sharma')}"></div><div class="field"><label>${B('वार्ड', 'Ward')}</label><select id="obWard">${wardOpts()}</select></div>${S.user?.phoneNumber ? '' : `<div class="field"><label>${B('मोबाइल नंबर (वैकल्पिक)', 'Mobile number (optional)')}</label><input class="input" id="obPhone" inputmode="numeric" maxlength="10" placeholder="${B('बाज़ार में खरीदार कॉल कर सकें', 'So buyers can call you in the bazaar')}"><span class="muted">${B('सिर्फ़ लॉगिन किए लोगों को बाज़ार में दिखेगा', 'Shown only to logged-in users, in the bazaar')}</span></div>`}</div>
   <button class="btn btn-brand btn-block" style="margin-top:14px" onclick="A.saveProfile()">${B('शुरू करें', 'Get started')}</button>`;
+}
+function resetRecaptcha() {
+  try { window.rv?.clear(); } catch (_) {} window.rv = null;
+  const old = $('#recaptcha'), fresh = document.createElement('div'); fresh.id = 'recaptcha'; old.replaceWith(fresh);
 }
 const loginPanel = msg => `<div class="panel" style="margin-top:14px"><h3 style="font-size:22px;margin-bottom:6px">${B('इसके लिए लॉगिन चाहिए', 'You need to log in for this')}</h3><p class="muted" style="margin:0 0 14px">${msg}</p><button class="btn btn-brand" onclick="A.login()">${B('मोबाइल नंबर से जुड़ें', 'Continue with mobile')}</button></div>`;
 
@@ -321,7 +325,7 @@ function profile() {
   const common = `${!isStandalone() ? `<button class="btn btn-gold btn-block" style="margin-top:14px" onclick="A.install()">📲 ${B('ऐप फोन में इंस्टॉल करें', 'Install the app')}</button>` : ''}<button class="btn btn-line btn-block" style="margin-top:10px" onclick="A.shareApp()">↗ ${B('दोस्तों को भेजें', 'Share with friends')}</button><p class="foot">Mera Gaav · ${esc(VILLAGE.name)}, ${esc(VILLAGE.state)}</p>`;
   if (!loggedIn()) return `<h1 class="h1">${B('खाता खोलिए', 'Open your account')}</h1><p style="margin:8px 0">${B('सिर्फ़ मोबाइल नंबर और एक OTP। इससे आप —', 'Just a mobile number and one OTP. With it you can —')}</p><ul class="checks"><li>${B('शिकायत दर्ज कर सकते हैं और उसे ट्रैक कर सकते हैं', 'report issues and track them')}</li><li>${B('गाँव के मतदान में वोट दे सकते हैं', 'vote in village polls')}</li><li>${B('शिकायतों पर टिप्पणी और समर्थन दे सकते हैं', 'comment on and back issues')}</li><li>${B('गाँव बाज़ार में विज्ञापन डाल सकते हैं', 'post in the village bazaar')}</li></ul><button class="btn btn-brand btn-block" onclick="A.login()">${B('मोबाइल नंबर से जुड़ें', 'Continue with mobile')}</button>${common}`;
   const my = S.complaints.filter(c => c.uid === S.user.uid);
-  return `<h1 class="h1">${esc(S.profile.name)}</h1><p class="muted" style="margin:4px 0 14px">${esc(S.profile.phone || S.user.phoneNumber || '')} · ${isAdmin() ? 'Admin / पंचायत' : B('ग्रामवासी', 'Resident')}</p>
+  return `<h1 class="h1">${esc(S.profile.name)}</h1><p class="muted" style="margin:4px 0 14px">${esc(S.profile.phone || S.user.phoneNumber || S.user.email || '')} · ${isAdmin() ? 'Admin / पंचायत' : B('ग्रामवासी', 'Resident')}</p>
   <div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><b>${my.length}</b><span>${B('मेरी शिकायतें', 'My issues')}</span></div><div class="kpi"><b>${my.filter(c => c.status === 'Resolved').length}</b><span>${B('हल हुईं', 'Solved')}</span></div><div class="kpi"><b>${my.reduce((a, c) => a + (c.upvoters || []).length, 0)}</b><span>${B('मिले समर्थन', 'Backers')}</span></div></div>
   <div class="panel" style="margin-top:14px"><div class="form-grid"><div class="field"><label>${B('नाम', 'Name')}</label><input id="pName" value="${esc(S.profile.name)}"></div><div class="field"><label>${B('वार्ड', 'Ward')}</label><select id="pWard">${wardOpts(S.profile.ward)}</select></div></div><div class="row" style="margin-top:14px"><button class="btn btn-brand" onclick="A.updateProfile()">${B('सेव करें', 'Save')}</button><button class="btn btn-line" onclick="A.logout()">${B('लॉगआउट', 'Logout')}</button></div></div>
   <div class="row" style="margin-top:12px"><button class="btn btn-line" onclick="go('mine')">📋 ${B('मेरी शिकायतें', 'My issues')}</button>${isAdmin() ? `<button class="btn btn-line" onclick="go('admin')">⚙️ Admin</button>` : ''}</div>${common}`;
@@ -364,10 +368,24 @@ const A = window.A = {
     const ph = $('#phoneIn').value.trim(); if (!/^[6-9]\d{9}$/.test(ph)) return toast(B('सही 10 अंकों का मोबाइल नंबर डालें', 'Enter a valid 10-digit mobile number'));
     const btn = $('#sendBtn'); btn.disabled = true; btn.textContent = '…';
     try {
-      if (!window.rv) window.rv = new RecaptchaVerifier(auth, 'recaptcha', { size: 'invisible' });
+      resetRecaptcha();
+      window.rv = new RecaptchaVerifier(auth, $('#recaptcha'), { size: 'invisible' });
       S.confirmation = await signInWithPhoneNumber(auth, '+91' + ph, window.rv);
       S.authStep = 'otp'; openAuth(); toast(B('OTP भेज दिया गया', 'OTP sent'));
-    } catch (e) { console.error(e); toast(B('OTP नहीं भेज सके: ', 'Could not send OTP: ') + (e.code || e.message)); try { window.rv?.clear(); } catch (_) {} window.rv = null; btn.disabled = false; btn.textContent = B('OTP भेजें', 'Send OTP'); }
+    } catch (e) {
+      console.error(e); resetRecaptcha();
+      const msg = { 'auth/operation-not-allowed': B('इस क्षेत्र (India) के लिए SMS चालू नहीं है — Firebase में SMS region allow करें', 'SMS is not enabled for this region — allow India in Firebase SMS region policy'), 'auth/too-many-requests': B('बहुत बार कोशिश की, कुछ देर बाद फिर करें', 'Too many attempts, try again later'), 'auth/invalid-phone-number': B('नंबर सही नहीं है', 'Invalid number'), 'auth/captcha-check-failed': B('सुरक्षा जाँच विफल, पेज रीलोड करें', 'Security check failed, reload the page'), 'auth/billing-not-enabled': B('Firebase में Blaze प्लान चालू करना होगा', 'Firebase Blaze plan is required') }[e.code];
+      toast(msg || (B('OTP नहीं भेज सके: ', 'Could not send OTP: ') + (e.code || e.message))); btn.disabled = false; btn.textContent = B('OTP भेजें', 'Send OTP');
+    }
+  },
+  async google() {
+    const btn = $('#gBtn'); btn.disabled = true;
+    try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+    catch (e) {
+      console.error(e); btn.disabled = false;
+      if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+      toast(({ 'auth/operation-not-allowed': B('Firebase में Google sign-in चालू करें', 'Enable Google sign-in in Firebase'), 'auth/unauthorized-domain': B('यह डोमेन Firebase → Authorized domains में जोड़ें', 'Add this domain in Firebase → Authorized domains'), 'auth/popup-blocked': B('पॉपअप ब्लॉक है — अनुमति दें', 'Popup blocked — allow popups') })[e.code] || (B('Google लॉगिन विफल: ', 'Google login failed: ') + (e.code || e.message)));
+    }
   },
   async verifyOtp() {
     const code = $('#otpIn').value.trim(); if (code.length !== 6) return toast(B('6 अंकों का OTP डालें', 'Enter the 6-digit OTP'));
@@ -376,7 +394,8 @@ const A = window.A = {
   },
   async saveProfile() {
     const name = $('#obName').value.trim(); if (name.length < 2) return toast(B('अपना नाम लिखिए', 'Enter your name'));
-    const p = { name, ward: $('#obWard').value, phone: S.user.phoneNumber, role: 'resident', createdAt: serverTimestamp() };
+    const typed = ($('#obPhone')?.value || '').trim(); if (typed && !/^[6-9]\d{9}$/.test(typed)) return toast(B('सही 10 अंकों का नंबर डालिए या खाली छोड़िए', 'Enter a valid 10-digit number or leave it empty'));
+    const p = { name, ward: $('#obWard').value, phone: S.user.phoneNumber || (typed ? '+91' + typed : ''), email: S.user.email || '', role: 'resident', createdAt: serverTimestamp() };
     try { await setDoc(doc(db, 'users', S.user.uid), p); S.profile = { ...p }; finishLogin(); } catch (e) { toast(e.message); }
   },
   async updateProfile() {
@@ -446,7 +465,7 @@ const A = window.A = {
       poll: [B('नया मतदान', 'New poll'), [['q', 'सवाल / Question'], ['options', 'विकल्प (हर लाइन में एक)', 'textarea']]],
       directory: [B('संपर्क जोड़ें', 'Add contact'), [['name', 'नाम / संस्था'], ['role', 'पद / विभाग'], ['phone', 'फ़ोन नंबर']]],
       mandi: [B('मंडी भाव जोड़ें', 'Add mandi rate'), [['crop', 'फसल'], ['price', 'भाव (₹)'], ['unit', 'इकाई (क्विंटल/किलो)'], ['mandi', 'मंडी का नाम']]],
-      bazaar: [B('विज्ञापन डालें', 'Post listing'), [['type', 'प्रकार', 'select', Object.keys(BZ)], ['title', 'शीर्षक'], ['price', 'कीमत ₹ (वैकल्पिक)'], ['desc', 'विवरण', 'textarea'], ['photo', 'फोटो', 'file']]]
+      bazaar: [B('विज्ञापन डालें', 'Post listing'), [['type', 'प्रकार', 'select', Object.keys(BZ)], ['title', 'शीर्षक'], ['price', 'कीमत ₹ (वैकल्पिक)'], ['desc', 'विवरण', 'textarea'], ['phone', 'फ़ोन नंबर (खरीदार कॉल करेंगे)'], ['photo', 'फोटो', 'file']]]
     }[type];
     S.formType = type; S.authOpen = false;
     openModal(`<div class="row between"><h3 style="font-size:24px">${F[0]}</h3><button class="iconbtn" onclick="A.closeModal()" aria-label="Close">✕</button></div><div class="form-grid" style="grid-template-columns:1fr;margin-top:12px">${F[1].map(([k, l, t, o]) => `<div class="field"><label>${l}</label>${t === 'textarea' ? `<textarea id="af_${k}"></textarea>` : t === 'select' ? `<select id="af_${k}">${o.map(x => `<option>${x}</option>`).join('')}</select>` : t === 'file' ? `<input id="af_${k}" type="file" accept="image/*" multiple>` : `<input id="af_${k}">`}</div>`).join('')}</div>${type === 'bazaar' ? `<p class="muted">${B('आपका नंबर सिर्फ़ लॉगिन किए हुए लोगों को दिखेगा।', 'Your number is shown only to logged-in users.')}</p>` : ''}<button class="btn btn-brand btn-block" style="margin-top:14px" id="afBtn" onclick="A.saveAdmin()">${B('सेव करें', 'Save')}</button>`);
@@ -459,9 +478,9 @@ const A = window.A = {
       if (type === 'poll') { const o = v('options').split('\n').map(x => x.trim()).filter(Boolean); if (!v('q') || o.length < 2) throw new Error(B('सवाल और कम से कम 2 विकल्प चाहिए', 'Need a question and 2+ options')); d = { q: v('q'), options: o.slice(0, 6), open: true }; }
       if (type === 'directory') { if (!v('name') || !v('phone')) throw new Error(B('नाम और फ़ोन लिखिए', 'Add a name and phone')); d = { name: v('name'), role: v('role'), phone: v('phone') }; }
       if (type === 'mandi') { if (!v('crop') || !v('price')) throw new Error(B('फसल और भाव लिखिए', 'Add a crop and price')); d = { crop: v('crop'), price: v('price'), unit: v('unit') || 'क्विंटल', mandi: v('mandi') }; }
-      if (type === 'bazaar') { if (!v('title')) throw new Error(B('शीर्षक लिखिए', 'Add a title')); const files = [...($('#af_photo').files || [])].slice(0, 3); d = { uid: S.user.uid, name: S.profile.name, type: v('type'), title: v('title'), price: v('price'), desc: v('desc'), photos: await uploadPhotos(files), sold: false }; }
-      d.createdAt = serverTimestamp(); const ref = await addDoc(collection(db, col), d);
-      if (type === 'bazaar') await setDoc(doc(db, 'bazaar', ref.id, 'private', 'contact'), { phone: (S.profile.phone || S.user.phoneNumber || '').replace(/\s/g, '') });
+      if (type === 'bazaar') { if (!v('title')) throw new Error(B('शीर्षक लिखिए', 'Add a title')); const files = [...($('#af_photo').files || [])].slice(0, 3); d = { uid: S.user.uid, name: S.profile.name, type: v('type'), title: v('title'), price: v('price'), desc: v('desc'), photos: await uploadPhotos(files), sold: false }; const ph = (v('phone') || S.profile.phone || S.user.phoneNumber || '').replace(/[\s-]/g, ''); if (!/^(\+91)?[6-9]\d{9}$/.test(ph)) throw new Error(B('सही 10 अंकों का फ़ोन नंबर लिखिए', 'Enter a valid 10-digit phone number')); d._ph = ph.startsWith('+') ? ph : '+91' + ph; }
+      const phoneForDoc = d._ph; delete d._ph; d.createdAt = serverTimestamp(); const ref = await addDoc(collection(db, col), d);
+      if (type === 'bazaar') await setDoc(doc(db, 'bazaar', ref.id, 'private', 'contact'), { phone: phoneForDoc });
       closeModal(); toast(B('सेव हो गया ✅', 'Saved ✅'));
     } catch (e) { toast(e.message); btn.disabled = false; }
   },
